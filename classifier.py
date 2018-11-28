@@ -7,162 +7,237 @@ Created on Sat Sep 15 21:56:00 2018
 """
 
 import matplotlib.pyplot as plt
-from math import log
+from math import log10
 import random
-from prosestext import *
+from  prosestext import *
 import pandas as pd
 import datetime
 from Sastrawi.StopWordRemover.StopWordRemoverFactory import StopWordRemoverFactory
 from Sastrawi.Stemmer.StemmerFactory import StemmerFactory
-
+import csv
+from substitusi import *
 
 class SpamClassifier(object):
-    def __init__(self, tweets,labels,method='bow',gram=1):
+    def __init__(self, tweets,labels):
         self.tweets, self.labels = tweets,labels
-        self.method = method
-        self.gram = gram
+        self.clean_tweets = []
+        self.conv_tweets = []
+        self.stem_tweets = []
+        self.processed_tweets = []
+
         self.spam_tweets, self.ham_tweets = (labels==1).sum(),(labels==0).sum()
-        self.total_tweets = self.spam_tweets + self.ham_tweets
-        self.spam_words = 0
-        self.ham_words = 0
-        self.tf_spam = dict()
-        self.tf_ham = dict()
-        self.idf_spam = dict()
-        self.idf_ham = dict()
-        self.prob_spam = dict()
-        self.prob_ham = dict()
+        self.total_tweets = len(self.tweets)
+        
+        self.testdata = []
+        self.testdata_terproses = []
+        
+        self.vocab1 = list()
+        self.vocab2 = list()
+        self.vocab3 = list()
+        
+             
         self.prior_spam = 0.0
         self.prior_ham = 0.0
-        self.sum_tf_idf_spam = 0.0
-        self.sum_tf_idf_ham = 0.0
+        
         self.tf_spam1 = dict()
         self.tf_ham1 = dict()
         self.tf_spam2 = dict()
         self.tf_ham2 = dict()
         self.tf_spam3 = dict()
         self.tf_ham3 = dict()
-        self.stemfactory = StemmerFactory()
-        self.stemmer = self.stemfactory.create_stemmer()
+        
+        self.dfw1 = dict()
+        self.dfw2 = dict()
+        self.dfw3 = dict()
+        
+        self.pwtfidf_spam1 = dict()
+        self.pwtfidf_ham1 = dict()
+        self.pwtfidf_spam2 = dict()
+        self.pwtfidf_ham2 = dict()
+        self.pwtfidf_spam3 = dict()
+        self.pwtfidf_ham3 = dict()
+        
+        
+        self.stemmer = StemmerFactory().create_stemmer()
         self.stop = StopWordRemoverFactory().create_stop_word_remover()
-        
-  
-    def train(self):
-        self.prior_spam = self.spam_tweets/ self.total_tweets
-        self.prior_ham = self.ham_tweets / self.total_tweets
-        self.calc_TF_and_IDF()
-        if self.method == 'tfidf':
-            self.calc_TF_IDF()
-        elif self.method == 'bow':
-            self.calc_prob()
-        else:
-            self.sbtrain()
-            
-    def calc_prob(self):
-        for word in self.tf_spam:
-            self.prob_spam[word] = (self.tf_spam[word] + 1)/(self.spam_words + len(self.tf_spam))
-        for word in self.tf_ham:
-            self.prob_ham[word] = (self.tf_ham[word] + 1)/ (self.ham_words + len(self.tf_ham))
-
-        
-    def calc_TF_and_IDF(self):
-        noOfMessages = self.total_tweets   
-        count = list() #
-        for i in range(noOfMessages):    
-            text = praproses(self.tweets[i])
-            text = self.stop.remove(text)
-            text = self.stemmer.stem(text)
-            processed = createToken(text,gram=self.gram)
-                       
-            for word in processed:
-                if self.labels[i]:
-                    self.tf_spam[word] = self.tf_spam.get(word, 0) + 1
-                    self.spam_words += 1
-                else:
-                    self.tf_ham[word] = self.tf_ham.get(word, 0) + 1
-                    self.ham_words += 1
-                if word not in count:
-                    count += [word]
-            for word in count:
-                if self.labels[i]:
-                    self.idf_spam[word] = self.idf_spam.get(word, 0) + 1
-                else:
-                    self.idf_ham[word] = self.idf_ham.get(word, 0) + 1   
-            self.vocab = len(count)
+        self.stop.dictionary.add('lasturladdr')
+        self.stop.dictionary.add('rt')
     
-    def sbtrain(self):
-        noOfMessages = self.total_tweets   
-        #print(self.train_tweets['text'][0])       
-        for i in range(noOfMessages):
-            text = praproses(self.tweets[i])
-            text = self.stop.remove(text)
-            #text = self.stemmer.stem(text)
-            processed = createToken(text,gram=1)
-            #count = list() #           
-            for word in processed:
+    
+    def praproses(self):
+        for i in range(len(self.tweets)):
+            self.clean_tweets.append(clean_text(self.tweets[i]))
+            self.conv_tweets.append(konversi(self.clean_tweets[i],pengganti))
+            self.stem_tweets.append(self.stemmer.stem(self.conv_tweets[i]))
+            self.processed_tweets.append(self.stop.remove(self.stem_tweets[i]))
+        
+               
+    def praprosestext(self,teks):
+        cteks = clean_text(teks)
+        konv_teks = konversi(cteks,pengganti)
+        stemteks = self.stemmer.stem(konv_teks)
+        nosw_teks = self.stop.remove(stemteks)
+        return nosw_teks
+    
+    
+    def hitungTFDF(self):
+        for i in range(self.total_tweets):
+            
+            dfw = {}
+            tfunigram = createToken(self.processed_tweets[i],gram=1)
+            for word in tfunigram:
+                
+                if dfw.get(word,0)== 0:  # hitung dokumen berisi word
+                    dfw[word] = 1
+                    self.dfw1[word] = self.dfw1.get(word,0) + 1  
+                
                 if self.labels[i]:
-                    self.tf_spam1[word] = self.tf_spam1.get(word, 0) + 1
+                    self.tf_spam1[word] = self.tf_spam1.get(word,0) + 1
+                                      
                 else:
-                    self.tf_ham1[word] = self.tf_ham1.get(word, 0) + 1
-            #count = list() #           
-            processed2 = createToken(text,gram=2)
-            for word in processed2:
-                if self.labels[i]:
-                    self.tf_spam2[word] = self.tf_spam2.get(word, 0) + 1
-                else:
-                    self.tf_ham2[word] = self.tf_ham2.get(word, 0) + 1
+                    self.tf_ham1[word] = self.tf_ham1.get(word,0) + 1                  
                     
-        self.vocabsize = len(self.tf_ham1) + len(self.tf_spam1)
-    
-                         
-        
-    def calc_TF_IDF(self):     
-        for word in self.tf_spam:
-            self.prob_spam[word] = (self.tf_spam[word]) \
-              * log((self.spam_tweets + self.ham_tweets)\
-              / (self.idf_spam[word] + self.idf_ham.get(word, 0)))
-            self.sum_tf_idf_spam += self.prob_spam[word]
-            
-                 
-        for word in self.tf_spam:
-            self.prob_spam[word] = (self.prob_spam[word] + 1) / (self.sum_tf_idf_spam + len(self.prob_spam))
-        
-        #print("SPAM.....")
-        for word in self.tf_ham:
-            self.prob_ham[word] = (self.tf_ham[word]) * log((self.spam_tweets\
-              + self.ham_tweets) / (self.idf_spam.get(word, 0) + self.idf_ham[word]))
-            
-            self.sum_tf_idf_ham += self.prob_ham[word]
-        for word in self.tf_ham:
-            self.prob_ham[word] = (self.prob_ham[word] + 1) / (self.sum_tf_idf_ham + len(list(self.prob_ham.keys())))
-            
+            dfw = {}
+            tfbigram = createToken(self.processed_tweets[i],gram=2)
+            for word in tfbigram:
+                
+                if dfw.get(word,0)== 0:  # hitung dokumen berisi word
+                    dfw[word] = 1
+                    self.dfw2[word] = self.dfw2.get(word,0) + 1
+                    
+                if self.labels[i]:
+                    self.tf_spam2[word] = self.tf_spam2.get(word,0) + 1
+                    
+                else:
+                    self.tf_ham2[word] = self.tf_ham2.get(word,0) + 1               
+                    
 
-    def classify(self, processed_text):
-        pSpam, pHam = 0, 0
-        for word in processed_text:          
-            if word in self.prob_spam:
-                pSpam += log(self.prob_spam[word])
-            else:
-                if self.method == 'tfidf':
-                    pSpam -= log(self.sum_tf_idf_spam + len(list(self.prob_spam.keys())))
+            dfw = {}
+            tftrigram = createToken(self.processed_tweets[i],gram=3)
+            for word in tftrigram:
+                
+                if dfw.get(word,0)== 0:  # hitung dokumen berisi word
+                    dfw[word] = 1
+                    self.dfw3[word] = self.dfw3.get(word,0) + 1
+                
+                if self.labels[i]:
+                    self.tf_spam3[word] = self.tf_spam3.get(word,0) + 1
+                    
                 else:
-                    pSpam -= log(self.spam_words + len(list(self.prob_spam.keys())))
-            if word in self.prob_ham:
-                pHam += log(self.prob_ham[word])
-            else:
-                if self.method == 'tfidf':
-                    pHam -= log(self.sum_tf_idf_ham + len(list(self.prob_ham.keys())))
-                else:
-                    pHam -= log(self.ham_words + len(list(self.prob_ham.keys())))
-            pSpam += log(self.prior_spam)
-            pHam += log(self.prior_ham)
+                    self.tf_ham3[word] = self.tf_ham3.get(word,0) + 1
+                        
+        self.vocab1 = list(dict(self.tf_spam1,**self.tf_ham1).keys())
+        self.vocab2 = list(dict(self.tf_spam2,**self.tf_ham2).keys())
+        self.vocab3 = list(dict(self.tf_spam3,**self.tf_ham3).keys())
+                    
+
+    
+    def train(self):
+        self.praproses()
+        self.hitungTFDF()
+        
+        self.prior_spam = self.spam_tweets/ self.total_tweets
+        self.prior_ham = self.ham_tweets / self.total_tweets       
+        
+        #****Hitung tfidf untuk 1-gram dan 2-gram***
+        
+         #***** 1-gram****
+        for word in self.tf_spam1:
+            self.pwtfidf_spam1[word] = self.tf_spam1[word] \
+                   * log10(len(self.tweets) / self.dfw1[word])
+                    
+        for word in self.tf_ham1:
+            self.pwtfidf_ham1[word] = self.tf_ham1[word] \
+                   * log10(len(self.tweets) / self.dfw1[word])
+                               
+         #===2 gram===
+        for word in self.tf_spam2:
+            self.pwtfidf_spam2[word] = self.tf_spam2[word] \
+                    * log10(len(self.tweets) / (self.dfw2[word]))            
+                    
+        for word in self.tf_ham2:
+            self.pwtfidf_ham2[word] = self.tf_ham2[word] \
+                    * log10(len(self.tweets) / self.dfw2[word])
+               
+        
+    def classify1(self,text,metode):
+        
+        self.metode = metode+'1gr'
+        proses_text = self.praprosestext(text)   
+        self.testdata_terproses.append(proses_text)
+        token = createToken(proses_text,gram=1)
+        
+        pSpam = log10(self.prior_spam)
+        pHam = log10(self.prior_ham)
+        
+        for word in token: 
             
+            #==hitung probbilitas spam                  
+            if metode == 'tfidf':
+                pSpam += log10(self.pwtfidf_spam1.get(word,1) + 1)
+                pSpam -= log10(sum(self.pwtfidf_spam1.values()) 
+                             + len(self.tf_spam1))
+            if metode == 'bow':
+                pSpam += log10((self.tf_spam1.get(word,0) + 1) 
+                            /(sum(self.tf_spam1.values()) + len(self.vocab1)))
+                                
+           #== Hitung untuk ham =====  
+            if metode == 'tfidf':
+                pHam += log10(self.pwtfidf_ham1.get(word,1) + 1)
+                pHam -= log10(sum(self.pwtfidf_ham1.values()) 
+                             + len(self.tf_ham1))
+            if metode == 'bow':
+                pHam += log10((self.tf_ham1.get(word,0) + 1)
+                            /(sum(self.tf_spam1.values()) + len(self.vocab1)))   
+              
+                
+        #print("pSpam: ",pSpam," pHam: ",pHam)        
         return pSpam >= pHam
     
-    def sbclassify(self,tweet):
+    def classify2(self, text,metode):
         
+        self.metode = metode+'2gr'
+        proses_text = self.praprosestext(text) 
+        self.testdata_terproses.append(proses_text)
+        token = createToken(proses_text,gram=2)
+        
+        pSpam = log10(self.prior_spam)
+        pHam = log10(self.prior_ham)
+        
+        for word in token: 
+            
+            #==hitung probbilitas spam                  
+            if metode == 'tfidf':
+                pSpam += log10(self.pwtfidf_spam2.get(word,1) + 1)
+                pSpam -= log10(sum(self.pwtfidf_spam2.values()) 
+                             + len(self.tf_spam2))
+            else:
+                pSpam += log10((self.tf_spam2.get(word,0) + 1) 
+                             /(sum(self.tf_spam2.values()) + len(self.vocab2)))
+                
+           #== Hitung untuk ham =====  
+            if metode == 'tfidf':
+                pHam += log10(self.pwtfidf_ham2.get(word,1) + 1)
+                pHam -= log10(sum(self.pwtfidf_ham2.values()) 
+                             + len(self.tf_ham2))
+            else:
+                pHam += log10((self.tf_ham2.get(word,0) + 1)
+                             /(sum(self.tf_spam2.values()) + len(self.vocab2)))
+        
+        #print('pSpam: ',pSpam,' pHam: ',pHam)
+        return pSpam >= pHam
+
+    
+    def sbclassify(self,text):
+        
+        self.metode = 'stupidbackoff'
+        proses_text = self.praprosestext(text) 
+        self.testdata_terproses.append(proses_text)
         hamscore = 0.0
         spamscore = 0.0
-        words = createToken(tweet,gram=2)
+        
+        words = createToken(proses_text,gram=2)
+        
         for word in words:       
             wordtoken = word.split()
             tokenprev = wordtoken[0]
@@ -170,96 +245,91 @@ class SpamClassifier(object):
             if word in self.tf_ham2:
                 bicount = self.tf_ham2[word]
                 bi_unicount = self.tf_ham1[tokenprev]
-                hamscore += log(bicount)
-                hamscore -= log(bi_unicount)
+                hamscore += log10(bicount)
+                hamscore -= log10(bi_unicount)
             else:
                 if tokennext in self.tf_ham1:
                     unicount = self.tf_ham1[tokennext]
                 else:
                     unicount = 0.4
-                hamscore += log(0.4)
-                hamscore += log(unicount)
-                hamscore -= log(self.ham_words + self.vocabsize)
+                hamscore += log10(0.4)
+                hamscore += log10(unicount)
+                hamscore -= log10(sum(self.tf_ham1.values())+ len(self.vocab1))
         
             if word in self.tf_spam2:
                 bicount2 = self.tf_spam2[word]
                 bi_unicount2 = self.tf_spam1[tokenprev]
-                spamscore += log(bicount2)
-                spamscore -= log(bi_unicount2)
+                spamscore += log10(bicount2)
+                spamscore -= log10(bi_unicount2)
             else:
                 if tokennext in self.tf_spam1:
                     unicount2 = self.tf_spam1[tokennext]
                 else:
                     unicount2 = 0.4
-                spamscore += log(0.4)
-                spamscore += log(unicount2)
-                spamscore -= log(self.spam_words + self.vocabsize)     
-            #spamscore += log(self.prior_spam)
-            #hamscore += log(self.prior_ham)
+                spamscore += log10(0.4)
+                spamscore += log10(unicount2)
+                spamscore -= log10(sum(self.tf_spam1.values()) + len(self.vocab1))     
+            #spamscore += log10(self.prior_spam)
+            #hamscore += log10(self.prior_ham)
         return spamscore >= hamscore
         
     
-    def predict(self, test_data):
+    def predict(self, test_data,metode,gram):
+        '''metode = stbo = stupid backoff'
+                    bow = bag off word
+                    tfidf = with tfidf
+        '''
+        self.testdata = []
+        self.testdata_terproses = []
         result = dict()
-        if self.method == 'stbo':
+        if metode == 'stbo':
             for (i, tweet) in enumerate(test_data):
-                text = praproses(tweet)
-                text = self.stop.remove(text)
-                text = self.stemmer.stem(text)
-                result[i] = int(self.sbclassify(text))
-        else:           
-            for (i, tweet) in enumerate(test_data):
-                text = praproses(tweet)
-                text = self.stop.remove(text)
-                text = self.stemmer.stem(text)
-                processed_text = createToken(text,gram=self.gram)
-                result[i] = int(self.classify(processed_text))
+                result[i] = int(self.sbclassify(tweet))
+        else:       
+            if gram == 1:
+                for (i, tweet) in enumerate(test_data):
+                    result[i] = int(self.classify1(tweet,metode))
+            if gram == 2:
+                for (i, tweet) in enumerate(test_data):
+                    result[i] = int(self.classify2(tweet,metode))                
         return result
-    
-    def printP(self):
-        print('spam_words:',self.spam_words)
-        print('ham_words:',self.ham_words)
-        print('prior spamm: ',self.prob_spam_tweet)
-        print('prior ham: ',self.prob_ham_tweet)
-        print('word in spam:',len(self.tf_spam))
-        print('word in ham: ',len(self.tf_ham))
-    
+      
 
-def metrics(labels, predictions,tweets):
-    etext=[]
-    eptext=[]
-    elabel=[]
-    true_pos, true_neg, false_pos, false_neg = 0,0,0,0
-    for i in range(len(labels)):
-        true_pos += int((labels[i] == 1) and (predictions[i] == 1))
-        true_neg += int(labels[i] == 0 and predictions[i] == 0)
-        if (labels[i] == 0 and predictions[i] == 1):
-            false_pos += 1
-            etext.append(tweets[i])
-            eptext.append(prosestext(tweets[i]))
-            elabel.append('fp')
-        if (labels[i] == 1 and predictions[i] == 0):
-            false_neg += 1
-            etext.append(tweets[i])
-            eptext.append(prosestext(tweets[i]))
-            elabel.append('fn')
-    edf = pd.DataFrame(list(zip(etext,eptext,elabel)),columns=['text','stemmedtext','label'])
-    filename = '/home/budi/false'+datetime.datetime.now().strftime("%H%M%S")+ '.xlsx'
-    writer = pd.ExcelWriter(filename,engine='xlsxwriter')
-    edf.to_excel(writer,sheet_name='Sheet1')
-    writer.save()
-    precision = true_pos / (true_pos + false_pos)
-    recall = true_pos / (true_pos + false_neg)
-    Fscore = 2 * precision * recall / (precision + recall)
-    accuracy = (true_pos + true_neg) / (true_pos + true_neg + false_pos + false_neg)
-    print("Precision: ", precision)
-    print("Recall: ", recall)
-    print("F-score: ", Fscore)
-    print("Accuracy: ", accuracy) 
-    print('   ')
-    print("True Positiv: ",true_pos)
-    print("False Positiv: ",false_pos)
-    print("True Negativ: ",true_neg)
-    print("False Negativ: ",false_neg)
+    def metrics(self, labels, predictions,tweets):
+        etext=[]
+        eptext=[]
+        elabel=[]
+        true_pos, true_neg, false_pos, false_neg = 0,0,0,0
+        for i in range(len(labels)):
+            true_pos += int((labels[i] == 1) and (predictions[i] == 1))
+            true_neg += int(labels[i] == 0 and predictions[i] == 0)
+            if (labels[i] == 0 and predictions[i] == 1):
+                false_pos += 1
+                etext.append(tweets[i])
+                eptext.append(self.praprosestext(tweets[i]))
+                elabel.append('fp')
+            if (labels[i] == 1 and predictions[i] == 0):
+                false_neg += 1
+                etext.append(tweets[i])
+                eptext.append(self.praprosestext(tweets[i]))
+                elabel.append('fn')
+        edf = pd.DataFrame(list(zip(etext,eptext,elabel)),columns=['text','stemmedtext','label'])
+        filename = 'data/false_'+self.metode+ '.xlsx'
+        writer = pd.ExcelWriter(filename,engine='xlsxwriter')
+        edf.to_excel(writer,sheet_name='Sheet1')
+        writer.save()
+        precision = true_pos / (true_pos + false_pos)
+        recall = true_pos / (true_pos + false_neg)
+        Fscore = 2 * precision * recall / (precision + recall)
+        accuracy = (true_pos + true_neg) / (true_pos + true_neg + false_pos + false_neg)
+        print("Precision: ", precision)
+        print("Recall: ", recall)
+        print("F-score: ", Fscore)
+        print("Accuracy: ", accuracy) 
+        print('\n==Confusion Matrix===')
+        print("True Positiv: ",true_pos)
+        print("False Positiv: ",false_pos)
+        print("True Negativ: ",true_neg)
+        print("False Negativ: ",false_neg)
     
     
